@@ -8,7 +8,7 @@ import { User } from './entities/user.entity';
 import { Project } from './entities/project.entity';
 import { TimeSlot } from './entities/time-slot.entity';
 import { OpenAIService } from './openai.service';
-import { UserSearchService } from './telegram/services/user-search.service';
+import { TimeslotToolService } from './timeslot-tool.service';
 
 @Module({
   imports: [
@@ -31,6 +31,6 @@ import { UserSearchService } from './telegram/services/user-search.service';
     TypeOrmModule.forFeature([User, Project, TimeSlot]),
   ],
   controllers: [AppController],
-  providers: [AppService, TelegramService, OpenAIService, UserSearchService],
+  providers: [AppService, TelegramService, OpenAIService, TimeslotToolService],
 })
 export class AppModule {}

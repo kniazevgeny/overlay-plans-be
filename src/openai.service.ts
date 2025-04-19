@@ -3,439 +3,82 @@ import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 import {
   ChatCompletionMessageParam,
-  ChatCompletionSystemMessageParam,
-  ChatCompletionTool,
-  ChatCompletionToolMessageParam,
+  ChatCompletionMessageToolCall,
 } from 'openai/resources';
 import * as fs from 'fs';
 import * as path from 'path';
+import { TimeslotToolService } from './timeslot-tool.service';
+import { Project } from './entities/project.entity';
+import { User } from './entities/user.entity';
+import { timeslotTools } from './timeslot-tools';
+
+// Define interface for tool call results
+interface TimeslotToolResult {
+  success: boolean;
+  timeslots?: any[];
+  deletedCount?: number;
+  error?: string;
+  [key: string]: any;
+}
 
 @Injectable()
 export class OpenAIService {
-  private openai: OpenAI;
   private readonly logger = new Logger(OpenAIService.name);
+  private readonly openai: OpenAI;
   private conversationContexts: Map<string, ChatCompletionMessageParam[]> =
     new Map();
 
-  constructor(private readonly configService: ConfigService) {
-    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
-    if (!apiKey) {
-      this.logger.error(
-        'OPENAI_API_KEY is not defined in environment variables',
-      );
-    }
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly timeslotToolService: TimeslotToolService,
+  ) {
     this.openai = new OpenAI({
-      apiKey,
+      apiKey: this.configService.get<string>('OPENAI_API_KEY'),
     });
   }
 
-  /**
-   * Analyze a message to determine if it's a request to change a time slot's status
-   * This helps identify if the user wants to switch slots between available and busy
-   */
-  async analyzeSlotTypeChangeRequest(
-    message: string,
-    userTimeSlots: {
-      id: number;
-      startTime: Date;
-      endTime: Date;
-      status: 'available' | 'busy';
-      notes?: string;
-    }[],
-  ): Promise<{
-    isChangeRequest: boolean;
-    slotsToChange: number[]; // Array of time slot IDs to change
-    targetStatus?: 'available' | 'busy'; // Optional specific status to set
-    confidence: number; // How confident we are that this is a change request
-    reasoning: string; // Why we think this is or isn't a change request
-  }> {
+  async callFunction(
+    toolCall: ChatCompletionMessageToolCall,
+  ): Promise<TimeslotToolResult> {
     try {
-      if (!userTimeSlots || userTimeSlots.length === 0) {
-        return {
-          isChangeRequest: false,
-          slotsToChange: [],
-          confidence: 0,
-          reasoning: 'No time slots available to analyze',
-        };
-      }
+      const functionName = toolCall.function.name;
+      const functionArgs = JSON.parse(toolCall.function.arguments) as unknown;
 
-      // Define the slot management tools
-      const slotTools: ChatCompletionTool[] = [
-        {
-          type: 'function',
-          function: {
-            name: 'getTimeSlots',
-            description: 'Get current time slots for a user',
-            parameters: undefined,
-          },
-        },
-        {
-          type: 'function',
-          function: {
-            name: 'analyzeChangeRequest',
-            description:
-              'Analyze if a message is a request to change time slot status',
-            parameters: {
-              type: 'object',
-              properties: {
-                isChangeRequest: {
-                  type: 'boolean',
-                  description:
-                    'Whether the message is a request to change time slot status',
-                },
-                slotsToChange: {
-                  type: 'array',
-                  items: { type: 'integer' },
-                  description: 'Array of slot IDs that should be changed',
-                },
-                targetStatus: {
-                  type: 'string',
-                  enum: ['available', 'busy', null],
-                  description:
-                    'The target status to set, or null to toggle the current status',
-                },
-                confidence: {
-                  type: 'number',
-                  minimum: 0,
-                  maximum: 1,
-                  description: 'Confidence level, from 0 to 1',
-                },
-                reasoning: {
-                  type: 'string',
-                  description:
-                    "Explanation for why this is or isn't a change request",
-                },
-              },
-              required: [
-                'isChangeRequest',
-                'slotsToChange',
-                'confidence',
-                'reasoning',
-              ],
-            },
-          },
-        },
-      ];
-
-      // System message with enhanced instructions for multilingual support and various reference formats
-      const systemMessage: ChatCompletionMessageParam = {
-        role: 'system',
-        content: `You are an AI assistant helping users manage their schedule and time slots in multiple languages including English, Russian, and others.
-        
-        The user may want to change the status of their time slots between "available" and "busy".
-        
-        You can access the user's time slots by calling the getTimeSlots function.
-        
-        Analyze the message to determine if the user wants to change the status of specific time slots. Look for the following patterns:
-        
-        1. Slot references by ID: "change slot 3 to busy"
-        2. Time references: "19-23 это отметь как занятый слот" (mark 19-23 as busy slot)
-        3. Descriptions that match time slots: "mark my evening slot as busy"
-        4. Implicit references: "the first slot should be available"
-        
-        Users may refer to time slots in different ways:
-        - By ID number: "2", "slot #3"
-        - By time range: "19-23", "from 2pm to 5pm"
-        - By relative position: "first one", "last slot", "evening slot"
-        - By description that matches notes: "the meeting slot", "lunch break"
-        
-        For multilingual support, understand key terms in different languages:
-        - English: "available", "busy", "free", "occupied", "mark", "change"
-        - Russian: "свободный", "занятый", "доступный", "отметь", "измени"
-        
-        Confidence levels should be:
-        - 0.9-1.0: Explicit request to change slots with clear slot identification
-        - 0.7-0.9: Clear intent to change, but slot references might be ambiguous
-        - 0.4-0.7: Possible intent to change, but requires interpretation
-        - Below 0.4: Likely not a change request
-        
-        If the user doesn't specify a particular status (available/busy), leave "targetStatus" as null, which will toggle the current status.
-        
-        Try to identify which specific slots the user is referring to by matching their description to the available slots.`,
-      };
-
-      const userMessage: ChatCompletionMessageParam = {
-        role: 'user',
-        content: message,
-      };
-
-      // Function to handle tool calls
-      const handleToolCalls = (
-        toolCalls: Array<{
-          id: string;
-          type: 'function';
-          function: {
-            name: string;
-            arguments: string;
-          };
-        }>,
-      ): ChatCompletionToolMessageParam => {
-        const results = [];
-
-        for (const toolCall of toolCalls) {
-          if (toolCall.function.name === 'getTimeSlots') {
-            // Return formatted time slots with more detailed information
-            const formattedSlots = userTimeSlots.map((slot) => {
-              const startTime = new Date(slot.startTime).toLocaleString();
-              const endTime = new Date(slot.endTime).toLocaleString();
-              // Also include formatted time ranges like "19-23" to help with matching
-              const startHour = new Date(slot.startTime).getHours();
-              const endHour = new Date(slot.endTime).getHours();
-              const timeRange = `${startHour}-${endHour}`;
-
-              return `Time Slot ID: ${slot.id}, Time: ${startTime} - ${endTime}, Range: ${timeRange}, Status: ${slot.status}${
-                slot.notes ? `, Notes: ${slot.notes}` : ''
-              }`;
-            });
-
-            results.push({
-              tool_call_id: toolCall.id,
-              output: JSON.stringify({
-                slots: userTimeSlots,
-                formattedSlots: formattedSlots,
-              }),
-            });
-          }
-          // We don't need to handle analyzeChangeRequest as it's the final output
-        }
-
-        return {
-          role: 'tool',
-          tool_call_id: toolCalls[0].id, // Required field for ChatCompletionToolMessageParam
-          content: JSON.stringify({
-            slots: userTimeSlots,
-            formattedSlots: userTimeSlots.map((slot) => {
-              const startTime = new Date(slot.startTime);
-              const endTime = new Date(slot.endTime);
-              const startHour = startTime.getHours();
-              const endHour = endTime.getHours();
-              const timeRange = `${startHour}-${endHour}`;
-
-              return `${slot.id}: ${startTime.toLocaleString()} - ${endTime.toLocaleString()}, Range: ${timeRange}, Status: ${slot.status}`;
-            }),
-          }),
-        };
-      };
-
-      // Make initial API call
-      let response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [systemMessage, userMessage],
-        tools: slotTools,
-        temperature: 0.2, // Lower temperature for more deterministic analysis
-      });
-
-      // Process tool calls if any
-      let assistantMessage = response.choices[0].message;
-      const messages = [systemMessage, userMessage, assistantMessage];
-
-      // Handle any tool calls recursively until we get a final analysis
-      while (
-        assistantMessage.tool_calls &&
-        !assistantMessage.tool_calls.some(
-          (tc) => tc?.function?.name === 'analyzeChangeRequest',
-        )
-      ) {
-        const toolResponse = handleToolCalls(assistantMessage.tool_calls);
-        messages.push(
-          toolResponse as unknown as ChatCompletionSystemMessageParam,
-        );
-
-        // Make another API call with the tool response
-        response = await this.openai.chat.completions.create({
-          model: 'gpt-4o',
-          messages: messages,
-          tools: slotTools,
-          temperature: 0.2,
-        });
-
-        assistantMessage = response.choices[0].message;
-        messages.push(assistantMessage);
-      }
-
-      // Extract the analysis from the function call
-      if (assistantMessage.tool_calls) {
-        const analyzeCall = assistantMessage.tool_calls.find(
-          (tc) => tc?.function?.name === 'analyzeChangeRequest',
-        );
-
-        if (
-          analyzeCall &&
-          analyzeCall.function &&
-          analyzeCall.function.arguments
-        ) {
-          try {
-            const analysis = JSON.parse(analyzeCall.function.arguments) as {
-              isChangeRequest: boolean;
-              slotsToChange: number[];
-              targetStatus?: 'available' | 'busy';
-              confidence: number;
-              reasoning: string;
-            };
-
-            return {
-              isChangeRequest: analysis.isChangeRequest || false,
-              slotsToChange: analysis.slotsToChange || [],
-              targetStatus: analysis.targetStatus,
-              confidence: analysis.confidence || 0,
-              reasoning: analysis.reasoning || 'No reasoning provided',
-            };
-          } catch (parseError) {
-            this.logger.error(
-              'Error parsing analysis function call',
-              parseError,
-            );
-          }
-        }
-      }
-
-      // Fallback to old method if function calling didn't work
-      const finalContent = assistantMessage.content || '{}';
-      try {
-        // Try to parse as JSON if there was no function call
-        const parsedResponse = JSON.parse(finalContent) as {
-          isChangeRequest: boolean;
-          slotsToChange: number[];
-          targetStatus?: 'available' | 'busy';
-          confidence: number;
-          reasoning: string;
-        };
-
-        return {
-          isChangeRequest: parsedResponse.isChangeRequest || false,
-          slotsToChange: parsedResponse.slotsToChange || [],
-          targetStatus: parsedResponse.targetStatus,
-          confidence: parsedResponse.confidence || 0,
-          reasoning: parsedResponse.reasoning || 'No reasoning provided',
-        };
-      } catch (parseError) {
-        this.logger.error(
-          'Error parsing slot change analysis response',
-          parseError,
-        );
-        return {
-          isChangeRequest: false,
-          slotsToChange: [],
-          confidence: 0,
-          reasoning: 'Error parsing analysis response',
-        };
-      }
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : JSON.stringify(error);
-      this.logger.error(
-        `Error analyzing slot type change request: ${errorMessage}`,
+      this.logger.log(
+        `Calling function ${functionName} with args: ${JSON.stringify(
+          functionArgs,
+        )}`,
       );
-      return {
-        isChangeRequest: false,
-        slotsToChange: [],
-        confidence: 0,
-        reasoning: `Error processing request: ${errorMessage}`,
-      };
-    }
-  }
 
-  /**
-   * Extract user references from a message
-   * This helps identify users mentioned in natural language
-   */
-  async extractUserReferences(
-    message: string,
-    projectUsers: {
-      id: number;
-      firstName?: string;
-      lastName?: string;
-      username?: string;
-    }[],
-  ): Promise<{ userId: number; confidence: number }[]> {
-    try {
-      // Prepare user information for context
-      const userList = projectUsers
-        .map(
-          (user) =>
-            `User ID: ${user.id}, Name: ${user.firstName || ''} ${user.lastName || ''}, Username: ${user.username || ''}`,
-        )
-        .join('\n');
-
-      // System message with instructions for user extraction
-      const systemMessage: ChatCompletionMessageParam = {
-        role: 'system',
-        content: `You are a natural language processing assistant specialized in identifying references to users in messages.
-        You'll be given a message that might refer to users, and a list of available users in the project.
-        
-        The available users are:
-        ${userList}
-        
-        Your task is to identify which user(s) the message is referring to. Look for:
-        1. Direct references by username (e.g., "John", "@john")
-        2. Indirect references that seem to describe a user (e.g., "the project manager")
-        3. Contextual clues about who the message might be talking about
-        
-        Return your analysis as a JSON array with user IDs and confidence scores:
-        [
-          {
-            "userId": 123,
-            "confidence": 0.95,
-            "reasoning": "Directly mentioned by first name 'John'"
-          }
-        ]
-        
-        Confidence should be between 0 and 1, where:
-        - 0.9-1.0: Explicitly mentioned by name/username
-        - 0.7-0.9: Strong contextual evidence
-        - 0.4-0.7: Moderate evidence
-        - Below 0.4: Weak or speculative connection
-        
-        If no users are referenced, return an empty array: []`,
-      };
-
-      const userMessage: ChatCompletionMessageParam = {
-        role: 'user',
-        content: message,
-      };
-
-      // Make API call to extract user references
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [systemMessage, userMessage],
-        temperature: 0.3, // Lower temperature for more deterministic responses
-        response_format: { type: 'json_object' },
-      });
-
-      // Get assistant response
-      const assistantMessage = response.choices[0].message.content || '{}';
-
-      try {
-        const parsedResponse = JSON.parse(assistantMessage) as {
-          users?: { userId: number; confidence: number }[];
-          userReferences?: { userId: number; confidence: number }[];
-        };
-
-        if (Array.isArray(parsedResponse)) {
-          return parsedResponse;
-        } else if (parsedResponse && Array.isArray(parsedResponse.users)) {
-          return parsedResponse.users;
-        } else if (
-          parsedResponse &&
-          Array.isArray(parsedResponse.userReferences)
-        ) {
-          return parsedResponse.userReferences;
-        } else {
-          this.logger.warn(
-            'Unexpected response format from OpenAI user extraction',
-            parsedResponse,
+      // Call the appropriate function based on the function name
+      switch (functionName) {
+        case 'project_add_timeslots':
+          return await this.timeslotToolService.addTimeslots(
+            functionArgs as any,
           );
-          return [];
-        }
-      } catch (parseError) {
-        this.logger.error('Error parsing user extraction response', parseError);
-        return [];
+        case 'project_update_timeslots':
+          return await this.timeslotToolService.updateTimeslots(
+            functionArgs as any,
+          );
+        case 'project_delete_timeslots':
+          return await this.timeslotToolService.deleteTimeslots(
+            functionArgs as any,
+          );
+        case 'project_merge_timeslots':
+          return await this.timeslotToolService.mergeTimeslots(
+            functionArgs as any,
+          );
+        default:
+          throw new Error(`Unknown function: ${functionName}`);
       }
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : JSON.stringify(error);
-      this.logger.error(`Error extracting user references: ${errorMessage}`);
-      return [];
+    } catch (error) {
+      this.logger.error(`Error in callFunction: ${error}`);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : String(error),
+        timeslots: [],
+        deletedCount: 0,
+      };
     }
   }
 
@@ -444,9 +87,20 @@ export class OpenAIService {
    */
   async processMessage(
     message: string,
-    projectId: number,
-    contextId: string = `project-${projectId}`,
-  ): Promise<{ text: string; timeslots?: any[]; isProjectRelated: boolean }> {
+    user: User,
+    project: Project,
+    contextId: string = `project-${project.id}`,
+    projectUsers: {
+      id: number;
+      firstName?: string;
+      lastName?: string;
+      username?: string;
+    }[] = [],
+  ): Promise<{
+    text: string;
+    timeslots?: any[];
+    toolCallSuccess?: boolean;
+  }> {
     try {
       // Get or create conversation history for this context
       const conversationHistory = this.getConversationContext(contextId);
@@ -462,75 +116,177 @@ export class OpenAIService {
       const dateTimeString = currentDate.toISOString();
       const localDateString = currentDate.toLocaleString();
 
-      // System message with instructions for timeslot extraction
+      // Prepare user information for context if available
+      const userList =
+        projectUsers.length > 0
+          ? projectUsers
+              .map(
+                (user) =>
+                  `User ID: ${user.id}, Name: ${user.firstName || ''} ${user.lastName || ''}, Username: ${user.username || ''}`,
+              )
+              .join('\n')
+          : 'No users available';
+
+      // Get all time slots for this user in this project
+      const timeSlots = await this.timeslotToolService.getUserTimeSlots(
+        user.id,
+        project.id,
+      );
+
+      // System message with instructions for timeslot extraction, search detection, and user mentions
       const systemMessage: ChatCompletionMessageParam = {
         role: 'system',
-        content: `You are an AI assistant helping users manage their schedule. 
+        content: `You are an AI assistant helping users manage their schedule in a project planning application. 
         Today's date and time is ${localDateString} (${dateTimeString}).
-        If the user mentions any time slots or scheduling information, extract that information.
         
-        Return your response in a conversational way, but also add two JSON objects at the end of your message:
+        ## About Timeslots
+        Timeslots represent periods when a user is either available or busy. They have the following properties:
+        - startTime: When the time period begins (ISO format date-time, always 00:00:00)
+        - endTime: When the time period ends (ISO format date-time, always 23:59:59)
+        - notes: Optional description of what the timeslot is for
+        - status: Either "available" or "busy"
+        - isLocked: When true, only the creator can modify the timeslot
         
-        1. If you detect time slots, add a JSON object with the extracted time information:
-        [TIMESLOTS_JSON]
-        {
-          "timeslots": [
-            {
-              "startTime": "2023-04-10T14:00:00", // ISO format date-time
-              "endTime": "2023-04-10T16:00:00",   // ISO format date-time
-              "notes": "Meeting with team",        // Description of the event
-              "status": "available"                // Either "available" or "busy"
-            }
-          ]
-        }
-        [/TIMESLOTS_JSON]
+        ## Project Users
+        The following users are part of this project:
+        ${userList}
         
-        Distinguish between "available" and "busy" slots:
-        - If the user is telling you when they are free/available, mark those as "available"
-        - If the user is telling you when they are busy/occupied/have meetings, mark those as "busy"
-        - By default, assume slots are "available" unless clearly indicated otherwise
+        ## Current User's Time Slots
+        Here are the current time slots for the user in project "${project.name}":
+        ${timeSlots
+          .map((slot) => {
+            const date = new Date(slot.startTime).toLocaleDateString();
+            const endDate = new Date(slot.endTime).toLocaleDateString();
+            return `- ${date}${date !== endDate ? ` to ${endDate}` : ''} (${slot.status}) ${slot.notes ? `"${slot.notes}"` : ''}`;
+          })
+          .join('\n')}
         
-        2. Always add a JSON classification of whether the message is related to scheduling, planning, or calendar management:
-        [CLASSIFICATION_JSON]
-        {
-          "isProjectRelated": true/false  // true if the message is about scheduling, planning, or calendar management
-        }
-        [/CLASSIFICATION_JSON]`,
+        ## Tools
+        You can use tools to directly manipulate time slots. When a user makes a request to add, update, delete, or merge time slots, 
+        use the appropriate tool rather than explaining how to do it.
+        
+        ## IMPORTANT: Time Interpretation Rules
+        - All timeslots operate on FULL DAYS only - no hourly slots are allowed
+        - When time slots are created, they should always span a complete day (from 00:00:00 to 23:59:59)
+        - Create the LONGEST possible continuous intervals instead of separate slots
+        - For example, if user mentions "1 to 9 May", create ONE slot spanning all 9 days, not 9 individual slots
+        - When multiple consecutive days have the same status, ALWAYS consolidate them into a single slot
+        - Default to the current or upcoming dates if no specific date is mentioned
+        
+        ## OFF-TOPIC RESPONSE
+        The user has sent a message that is not related to scheduling or planning.
+        Generate a short, funny response (50-100 characters) that:
+        1. Acknowledges their message in a humorous way
+        2. Gently reminds them that you're a scheduling bot
+        3. Uses a scheduling/calendar pun or joke if possible
+        4. Keeps a light, friendly tone
+        
+        Your response should be brief, witty, and not condescending.
+        `,
       };
 
       // Make API call
       const response = await this.openai.chat.completions.create({
         model: 'gpt-4o',
         messages: [systemMessage, ...conversationHistory],
+        tools: timeslotTools,
         temperature: 0.7,
       });
 
-      // Get assistant response
-      const assistantMessage = response.choices[0].message.content || '';
+      // Check if there are tool calls in the response
+      let toolCallSuccess = false;
+      let assistantMessage = '';
 
-      // Add assistant response to conversation history
-      conversationHistory.push({
-        role: 'assistant',
-        content: assistantMessage,
-      });
+      if (
+        response.choices[0].message.tool_calls &&
+        response.choices[0].message.tool_calls.length > 0
+      ) {
+        // Process tool calls
+        this.logger.log(
+          `Tool calls detected: ${response.choices[0].message.tool_calls.length}`,
+        );
+
+        // Create an array to store each function call result
+        const toolCallResults: {
+          tool_call_id: string;
+          function_name: string;
+          success: boolean;
+          result?: TimeslotToolResult;
+          error?: string;
+        }[] = [];
+        let anyToolCallFailed = false;
+
+        for (const toolCall of response.choices[0].message.tool_calls) {
+          try {
+            const result = await this.callFunction(toolCall);
+            toolCallResults.push({
+              tool_call_id: toolCall.id,
+              function_name: toolCall.function.name,
+              success: result.success,
+              result,
+            });
+            if (!result.success) anyToolCallFailed = true;
+          } catch (error) {
+            this.logger.error(`Error calling function: ${error}`);
+            toolCallResults.push({
+              tool_call_id: toolCall.id,
+              function_name: toolCall.function.name,
+              success: false,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            anyToolCallFailed = true;
+          }
+        }
+
+        // Set tool call success flag
+        toolCallSuccess = !anyToolCallFailed;
+
+        // Add assistant's tool call message to the history
+        conversationHistory.push(response.choices[0].message);
+
+        // Create messages for the tool call results
+        const toolResponseMessages = toolCallResults.map((result) => ({
+          role: 'tool' as const,
+          tool_call_id: result.tool_call_id,
+          content: JSON.stringify(result),
+        }));
+
+        // Add tool response messages to conversation history
+        conversationHistory.push(...toolResponseMessages);
+
+        // Now get a follow-up response from the assistant
+        const followupResponse = await this.openai.chat.completions.create({
+          model: 'gpt-4o',
+          messages: [...conversationHistory],
+          temperature: 0.7,
+        });
+
+        // Get the follow-up response
+        assistantMessage = followupResponse.choices[0].message.content || '';
+
+        // Add the follow-up response to conversation history
+        conversationHistory.push({
+          role: 'assistant',
+          content: assistantMessage,
+        });
+      } else {
+        // No tool calls, just use the original response
+        assistantMessage = response.choices[0].message.content || '';
+
+        // Add assistant response to conversation history
+        conversationHistory.push({
+          role: 'assistant',
+          content: assistantMessage,
+        });
+      }
 
       // Update conversation context
       this.updateConversationContext(contextId, conversationHistory);
 
-      // Extract time slots if present
-      const timeslots = this.extractTimeslots(assistantMessage);
-
-      // Extract classification
-      const classification = this.extractClassification(assistantMessage);
-      const isProjectRelated = classification?.isProjectRelated ?? true; // Default to true if extraction fails
-
-      // Return clean message (without the JSON parts)
-      const cleanMessage = this.removeJsonParts(assistantMessage);
-
       return {
-        text: cleanMessage,
-        timeslots: timeslots,
-        isProjectRelated: isProjectRelated,
+        text: assistantMessage,
+        timeslots: timeSlots,
+        toolCallSuccess,
       };
     } catch (error: unknown) {
       const errorMessage =
@@ -540,50 +296,8 @@ export class OpenAIService {
       );
       return {
         text: 'Sorry, I encountered an error while processing your message. Please try again later.',
-        isProjectRelated: true, // Default to true in case of error
+        toolCallSuccess: false,
       };
-    }
-  }
-
-  /**
-   * Generate a funny response for off-topic messages
-   */
-  async generateFunnyResponse(message: string): Promise<string> {
-    try {
-      const funnyPrompt: ChatCompletionMessageParam = {
-        role: 'system',
-        content: `You are an AI assistant that specifically helps with scheduling and planning. 
-        The user has sent a message that is not related to scheduling or planning.
-        Generate a short, funny response (50-100 characters) that:
-        1. Acknowledges their message in a humorous way
-        2. Gently reminds them that you're a scheduling bot
-        3. Uses a scheduling/calendar pun or joke if possible
-        4. Keeps a light, friendly tone
-        
-        Your response should be brief, witty, and not condescending.`,
-      };
-
-      const userMessage: ChatCompletionMessageParam = {
-        role: 'user',
-        content: message,
-      };
-
-      const response = await this.openai.chat.completions.create({
-        model: 'gpt-4o',
-        messages: [funnyPrompt, userMessage],
-        temperature: 0.9, // Higher temperature for more creative responses
-        max_tokens: 100, // Keep responses short
-      });
-
-      return (
-        response.choices[0].message.content ||
-        "I'd love to chat, but my calendar keeps beeping at me. Let's talk scheduling!"
-      );
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error generating funny response: ${errorMessage}`);
-      return "That's interesting! But speaking of interesting things, have you tried scheduling your day with me?";
     }
   }
 
@@ -623,61 +337,6 @@ export class OpenAIService {
   }
 
   /**
-   * Extract timeslots from assistant message
-   */
-  private extractTimeslots(message: string): any[] {
-    try {
-      const timeslotsMatch = message.match(
-        /\[TIMESLOTS_JSON\]([\s\S]*?)\[\/TIMESLOTS_JSON\]/,
-      );
-      if (timeslotsMatch && timeslotsMatch[1]) {
-        const jsonStr = timeslotsMatch[1].trim();
-        const data = JSON.parse(jsonStr) as { timeslots: any[] };
-        return data.timeslots || [];
-      }
-      return [];
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error extracting timeslots: ${errorMessage}`);
-      return [];
-    }
-  }
-
-  /**
-   * Extract classification from assistant message
-   */
-  private extractClassification(
-    message: string,
-  ): { isProjectRelated: boolean } | null {
-    try {
-      const classificationMatch = message.match(
-        /\[CLASSIFICATION_JSON\]([\s\S]*?)\[\/CLASSIFICATION_JSON\]/,
-      );
-      if (classificationMatch && classificationMatch[1]) {
-        const jsonStr = classificationMatch[1].trim();
-        return JSON.parse(jsonStr) as { isProjectRelated: boolean };
-      }
-      return null;
-    } catch (error: unknown) {
-      const errorMessage =
-        error instanceof Error ? error.message : 'Unknown error';
-      this.logger.error(`Error extracting classification: ${errorMessage}`);
-      return null;
-    }
-  }
-
-  /**
-   * Remove JSON parts from message
-   */
-  private removeJsonParts(message: string): string {
-    return message
-      .replace(/\[TIMESLOTS_JSON\][\s\S]*?\[\/TIMESLOTS_JSON\]/, '')
-      .replace(/\[CLASSIFICATION_JSON\][\s\S]*?\[\/CLASSIFICATION_JSON\]/, '')
-      .trim();
-  }
-
-  /**
    * Get conversation context
    */
   private getConversationContext(
@@ -698,6 +357,123 @@ export class OpenAIService {
   ): void {
     // Keep only the last 10 messages to prevent context from growing too large
     const limitedMessages = messages.slice(-10);
-    this.conversationContexts.set(contextId, limitedMessages);
+
+    // Make sure we don't break the tool calls pattern in the messages
+    const finalMessages = [...limitedMessages];
+
+    // Check for valid tool calls pattern
+    this.validateToolCallsPattern(finalMessages);
+
+    this.conversationContexts.set(contextId, finalMessages);
+  }
+
+  /**
+   * Validate and fix the tool calls pattern in the conversation messages
+   * This ensures that:
+   * 1. Every 'tool' message has a preceding assistant message with matching tool_call_id
+   * 2. Every tool_call in assistant messages has a corresponding 'tool' response message
+   */
+  private validateToolCallsPattern(
+    messages: ChatCompletionMessageParam[],
+  ): void {
+    // Check for tool messages without matching tool_calls
+    const toolMessages = messages.filter((msg) => msg.role === 'tool');
+
+    if (toolMessages.length > 0) {
+      // First get all tool_call_ids from tool messages
+      const toolCallIdsFromToolMessages = new Set(
+        toolMessages
+          .map((msg) => ('tool_call_id' in msg ? msg.tool_call_id : null))
+          .filter((id) => id !== null),
+      );
+
+      // Now find all assistant messages with tool_calls
+      const assistantMessagesWithToolCalls = messages.filter(
+        (msg) =>
+          msg.role === 'assistant' &&
+          msg.tool_calls &&
+          msg.tool_calls.length > 0,
+      );
+
+      // Track which tool_call_ids we need to remove
+      const toolCallIdsToRemove = new Set<string>();
+
+      // Get all tool_call_ids from the assistant messages
+      const allToolCallIds = new Set<string>();
+
+      for (const msg of assistantMessagesWithToolCalls) {
+        if ('tool_calls' in msg && Array.isArray(msg.tool_calls)) {
+          for (const toolCall of msg.tool_calls) {
+            allToolCallIds.add(toolCall.id);
+          }
+        }
+      }
+
+      // Check if each tool message has a corresponding tool_call
+      for (const toolCallId of toolCallIdsFromToolMessages) {
+        if (!allToolCallIds.has(toolCallId)) {
+          toolCallIdsToRemove.add(toolCallId);
+        }
+      }
+
+      // Check if each tool_call has a corresponding tool message
+      for (const toolCallId of allToolCallIds) {
+        const hasCorrespondingToolMessage = toolMessages.some(
+          (msg) => 'tool_call_id' in msg && msg.tool_call_id === toolCallId,
+        );
+
+        if (!hasCorrespondingToolMessage) {
+          toolCallIdsToRemove.add(toolCallId);
+        }
+      }
+
+      // If we need to remove any tool messages or tool_calls, do it
+      if (toolCallIdsToRemove.size > 0) {
+        this.logger.log(
+          `Fixing conversation history - removing ${toolCallIdsToRemove.size} problematic tool interactions`,
+        );
+
+        // Remove problematic tool messages
+        const filteredMessages = messages.filter(
+          (msg) =>
+            msg.role !== 'tool' ||
+            !('tool_call_id' in msg) ||
+            !toolCallIdsToRemove.has(msg.tool_call_id),
+        );
+
+        // Remove problematic tool_calls from assistant messages
+        messages.length = 0; // Clear the array without creating a new one
+
+        for (const msg of filteredMessages) {
+          if (
+            msg.role === 'assistant' &&
+            msg.tool_calls &&
+            msg.tool_calls.length > 0
+          ) {
+            // Create a modified version of the message with filtered tool_calls
+            const filteredToolCalls = msg.tool_calls.filter(
+              (tc) => !toolCallIdsToRemove.has(tc.id),
+            );
+
+            if (filteredToolCalls.length > 0) {
+              // If there are still valid tool_calls, keep them
+              messages.push({
+                ...msg,
+                tool_calls: filteredToolCalls,
+              });
+            } else {
+              // If no valid tool_calls remain, drop them completely
+              // Create a new object without the tool_calls property
+              const msgWithoutToolCalls = { ...msg };
+              delete msgWithoutToolCalls.tool_calls;
+              messages.push(msgWithoutToolCalls);
+            }
+          } else {
+            // Keep other messages as they are
+            messages.push(msg);
+          }
+        }
+      }
+    }
   }
 }

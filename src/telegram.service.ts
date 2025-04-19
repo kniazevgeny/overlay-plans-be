@@ -9,6 +9,7 @@ import { User } from './entities/user.entity';
 import { Project } from './entities/project.entity';
 import { TimeSlot } from './entities/time-slot.entity';
 import { OpenAIService } from './openai.service';
+import { TimeslotToolService } from './timeslot-tool.service';
 
 // Import these from a types file for better organization
 import { UserState, UserStateData } from './telegram/types/user-state.types';
@@ -19,7 +20,7 @@ import { ProjectHandlers } from './telegram/handlers/project-handlers';
 
 // Import translations
 import { translate } from './telegram/utils/translations';
-import { UserSearchService } from './telegram/services/user-search.service';
+import { TelegramEmoji } from 'telegraf/typings/core/types/typegram';
 
 @Injectable()
 export class TelegramService implements OnApplicationBootstrap {
@@ -35,7 +36,7 @@ export class TelegramService implements OnApplicationBootstrap {
     private readonly dataSource: DataSource,
     private readonly configService: ConfigService,
     private readonly openAIService: OpenAIService,
-    private readonly userSearchService: UserSearchService,
+    private readonly timeslotToolService: TimeslotToolService,
     @InjectRepository(User)
     private readonly userRepository: Repository<User>,
     @InjectRepository(Project)
@@ -59,10 +60,29 @@ export class TelegramService implements OnApplicationBootstrap {
       this.userRepository,
       this.projectRepository,
       this.timeSlotRepository,
-      this.userSearchService,
-      this, // Pass the TelegramService instance itself
+      this,
       this.projectHandlers,
+      this.timeslotToolService,
     );
+  }
+
+  // New method to set reactions on messages
+  public async setMessageReaction(
+    chatId: number,
+    messageId: number,
+    emoji: TelegramEmoji,
+  ): Promise<boolean> {
+    try {
+      await this.bot.telegram.callApi('setMessageReaction', {
+        chat_id: chatId,
+        message_id: messageId,
+        reaction: [{ type: 'emoji', emoji }],
+      });
+      return true;
+    } catch (error) {
+      this.logger.error(`Failed to set message reaction: ${error}`);
+      return false;
+    }
   }
 
   async onApplicationBootstrap(): Promise<void> {
@@ -151,132 +171,6 @@ export class TelegramService implements OnApplicationBootstrap {
       const projectId = parseInt(match[1], 10);
       await ctx.answerCbQuery('Cancelled');
       await this.projectHandlers.handleProjectSelection(ctx, projectId);
-    });
-
-    // Add handlers for approve/reject time slots buttons
-    this.bot.action(/approve_all:(.+)/, async (ctx) => {
-      const match = ctx.match;
-      const messageText = match[1];
-      await ctx.answerCbQuery('Processing...');
-      await this.messageHandlers.handleApproveTimeSlots(ctx, messageText);
-    });
-
-    this.bot.action(/reject_all:(.+)/, async (ctx) => {
-      const match = ctx.match;
-      const messageText = match[1];
-      await ctx.answerCbQuery('Rejected');
-      await this.messageHandlers.handleRejectTimeSlots(ctx, messageText);
-    });
-
-    // Add handler for approve and lock time slots
-    this.bot.action(/approve_lock:(.+)/, async (ctx) => {
-      const match = ctx.match;
-      const messageText = match[1];
-      await ctx.answerCbQuery('Processing...');
-      await this.messageHandlers.handleApproveAndLockTimeSlots(
-        ctx,
-        messageText,
-      );
-    });
-
-    // Backwards compatibility with older button formats
-    this.bot.action(/approve_slots:(.+)/, async (ctx) => {
-      const match = ctx.match;
-      const timeSlotKey = match[1];
-      await ctx.answerCbQuery('Processing...');
-      await this.messageHandlers.handleApproveTimeSlots(ctx, timeSlotKey);
-    });
-
-    this.bot.action(/reject_slots:(.+)/, async (ctx) => {
-      const match = ctx.match;
-      const timeSlotKey = match[1];
-      await ctx.answerCbQuery('Rejected');
-      await this.messageHandlers.handleRejectTimeSlots(ctx, timeSlotKey);
-    });
-
-    // Handle time slot locking/unlocking
-    this.bot.action(/lock_timeslot:(\d+)/, async (ctx) => {
-      const match = ctx.match;
-      const timeSlotId = parseInt(match[1], 10);
-      await ctx.answerCbQuery('Processing...');
-      // Additional logic to lock time slot would be implemented
-      const timeSlot = await this.timeSlotRepository.findOne({
-        where: { id: timeSlotId },
-        relations: ['createdBy'],
-      });
-
-      if (timeSlot) {
-        const tgUser = ctx.from;
-        if (!tgUser) return;
-
-        // Get the user
-        const user = await this.userRepository.findOne({
-          where: { telegramId: tgUser.id },
-        });
-
-        if (!user) return;
-
-        // Only allow the creator or admin to lock/unlock
-        if (timeSlot.createdBy && timeSlot.createdBy.id === user.id) {
-          timeSlot.isLocked = true;
-          await this.timeSlotRepository.save(timeSlot);
-          await ctx.editMessageText(
-            translate(user.language || 'en', 'slotIsLocked'),
-            Markup.inlineKeyboard([
-              Markup.button.callback(
-                translate(user.language || 'en', 'unlockTimeSlot'),
-                `unlock_timeslot:${timeSlot.id}`,
-              ),
-            ]),
-          );
-        } else {
-          await ctx.reply(
-            translate(user.language || 'en', 'cannotEditLockedSlot'),
-          );
-        }
-      }
-    });
-
-    this.bot.action(/unlock_timeslot:(\d+)/, async (ctx) => {
-      const match = ctx.match;
-      const timeSlotId = parseInt(match[1], 10);
-      await ctx.answerCbQuery('Processing...');
-      // Additional logic to unlock time slot would be implemented
-      const timeSlot = await this.timeSlotRepository.findOne({
-        where: { id: timeSlotId },
-        relations: ['createdBy'],
-      });
-
-      if (timeSlot) {
-        const tgUser = ctx.from;
-        if (!tgUser) return;
-
-        // Get the user
-        const user = await this.userRepository.findOne({
-          where: { telegramId: tgUser.id },
-        });
-
-        if (!user) return;
-
-        // Only allow the creator to unlock
-        if (timeSlot.createdBy && timeSlot.createdBy.id === user.id) {
-          timeSlot.isLocked = false;
-          await this.timeSlotRepository.save(timeSlot);
-          await ctx.editMessageText(
-            translate(user.language || 'en', 'slotIsUnlocked'),
-            Markup.inlineKeyboard([
-              Markup.button.callback(
-                translate(user.language || 'en', 'lockTimeSlot'),
-                `lock_timeslot:${timeSlot.id}`,
-              ),
-            ]),
-          );
-        } else {
-          await ctx.reply(
-            translate(user.language || 'en', 'cannotEditLockedSlot'),
-          );
-        }
-      }
     });
 
     // Handle callback queries that weren't caught by other handlers

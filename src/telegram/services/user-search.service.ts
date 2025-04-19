@@ -1,155 +1,98 @@
-import { Injectable, Logger } from '@nestjs/common';
-import { Repository } from 'typeorm';
-import { InjectRepository } from '@nestjs/typeorm';
-import { User } from '../../entities/user.entity';
-import { Project } from '../../entities/project.entity';
-import { OpenAIService } from '../../openai.service';
+// import { Injectable, Logger } from '@nestjs/common';
+// import { Repository } from 'typeorm';
+// import { InjectRepository } from '@nestjs/typeorm';
+// import { User } from '../../entities/user.entity';
+// import { Project } from '../../entities/project.entity';
+// import { OpenAIService } from '../../openai.service';
 
-@Injectable()
-export class UserSearchService {
-  private readonly logger = new Logger(UserSearchService.name);
+// @Injectable()
+// export class UserSearchService {
+//   private readonly logger = new Logger(UserSearchService.name);
 
-  constructor(
-    @InjectRepository(User)
-    private readonly userRepository: Repository<User>,
-    @InjectRepository(Project)
-    private readonly projectRepository: Repository<Project>,
-    private readonly openAIService: OpenAIService,
-  ) {}
+//   constructor(
+//     @InjectRepository(User)
+//     private readonly userRepository: Repository<User>,
+//     @InjectRepository(Project)
+//     private readonly projectRepository: Repository<Project>,
+//     private readonly openAIService: OpenAIService,
+//   ) {}
 
-  /**
-   * Search for users within a project using free-form text
-   * Will try to match users by:
-   * 1. Direct username/name matching
-   * 2. Natural language understanding (using OpenAI)
-   */
-  async searchUsersInProject(
-    projectId: number,
-    searchQuery: string,
-    minConfidence = 0.4, // Minimum confidence threshold for AI-based matches
-  ): Promise<{
-    users: User[];
-    aiMatches: { user: User; confidence: number; reasoning?: string }[];
-  }> {
-    try {
-      // Get project with users
-      const project = await this.projectRepository.findOne({
-        where: { id: projectId },
-        relations: ['users'],
-      });
+//   /**
+//    * Perform direct text search on user properties
+//    */
+//   private searchUsersByText(users: User[], searchQuery: string): User[] {
+//     if (!searchQuery || searchQuery.trim() === '') {
+//       return [];
+//     }
 
-      if (!project || !project.users || project.users.length === 0) {
-        return { users: [], aiMatches: [] };
-      }
+//     const normalizedQuery = searchQuery.toLowerCase().trim();
 
-      // First, perform direct text search
-      const directMatches = this.searchUsersByText(project.users, searchQuery);
+//     return users.filter((user) => {
+//       // Check if any user property matches the search query
+//       const firstName = (user.firstName || '').toLowerCase();
+//       const lastName = (user.lastName || '').toLowerCase();
+//       const username = (user.username || '').toLowerCase();
 
-      // Then use AI to analyze the query for more complex cases
-      const aiMatchedUsers = await this.findUsersWithAI(
-        project.users,
-        searchQuery,
-        minConfidence,
-      );
+//       return (
+//         firstName.includes(normalizedQuery) ||
+//         lastName.includes(normalizedQuery) ||
+//         username.includes(normalizedQuery) ||
+//         `${firstName} ${lastName}`.includes(normalizedQuery)
+//       );
+//     });
+//   }
 
-      // Combine the results (removing duplicates)
-      const allMatchedUsers = [...directMatches];
+//   /**
+//    * Use AI to find users based on natural language understanding
+//    */
+//   private async findUsersWithAI(
+//     users: User[],
+//     searchQuery: string,
+//     minConfidence: number,
+//   ): Promise<{ user: User; confidence: number; reasoning?: string }[]> {
+//     if (!searchQuery || searchQuery.trim() === '' || users.length === 0) {
+//       return [];
+//     }
 
-      // Add AI matches that weren't found by direct search
-      for (const aiMatch of aiMatchedUsers) {
-        if (!allMatchedUsers.some((user) => user.id === aiMatch.user.id)) {
-          allMatchedUsers.push(aiMatch.user);
-        }
-      }
+//     try {
+//       // Prepare user data for the AI
+//       const projectUsers = users.map((user) => ({
+//         id: user.id,
+//         firstName: user.firstName,
+//         lastName: user.lastName,
+//         username: user.username,
+//       }));
 
-      return {
-        users: allMatchedUsers,
-        aiMatches: aiMatchedUsers,
-      };
-    } catch (error) {
-      this.logger.error(
-        `Error searching users in project: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
-      );
-      return { users: [], aiMatches: [] };
-    }
-  }
+//       // Use OpenAI to extract user references
+//       const userReferences = await this.openAIService.extractUserReferences(
+//         searchQuery,
+//         projectUsers,
+//       );
 
-  /**
-   * Perform direct text search on user properties
-   */
-  private searchUsersByText(users: User[], searchQuery: string): User[] {
-    if (!searchQuery || searchQuery.trim() === '') {
-      return [];
-    }
+//       // Match the AI results back to actual user objects
+//       const aiMatches = userReferences
+//         .filter((ref) => ref.confidence >= minConfidence)
+//         .map((ref) => {
+//           const matchedUser = users.find((user) => user.id === ref.userId);
+//           if (matchedUser) {
+//             return {
+//               user: matchedUser,
+//               confidence: ref.confidence,
+//             };
+//           }
+//           return null;
+//         })
+//         .filter((match) => match !== null);
 
-    const normalizedQuery = searchQuery.toLowerCase().trim();
-
-    return users.filter((user) => {
-      // Check if any user property matches the search query
-      const firstName = (user.firstName || '').toLowerCase();
-      const lastName = (user.lastName || '').toLowerCase();
-      const username = (user.username || '').toLowerCase();
-
-      return (
-        firstName.includes(normalizedQuery) ||
-        lastName.includes(normalizedQuery) ||
-        username.includes(normalizedQuery) ||
-        `${firstName} ${lastName}`.includes(normalizedQuery)
-      );
-    });
-  }
-
-  /**
-   * Use AI to find users based on natural language understanding
-   */
-  private async findUsersWithAI(
-    users: User[],
-    searchQuery: string,
-    minConfidence: number,
-  ): Promise<{ user: User; confidence: number; reasoning?: string }[]> {
-    if (!searchQuery || searchQuery.trim() === '' || users.length === 0) {
-      return [];
-    }
-
-    try {
-      // Prepare user data for the AI
-      const projectUsers = users.map((user) => ({
-        id: user.id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        username: user.username,
-      }));
-
-      // Use OpenAI to extract user references
-      const userReferences = await this.openAIService.extractUserReferences(
-        searchQuery,
-        projectUsers,
-      );
-
-      // Match the AI results back to actual user objects
-      const aiMatches = userReferences
-        .filter((ref) => ref.confidence >= minConfidence)
-        .map((ref) => {
-          const matchedUser = users.find((user) => user.id === ref.userId);
-          if (matchedUser) {
-            return {
-              user: matchedUser,
-              confidence: ref.confidence,
-            };
-          }
-          return null;
-        })
-        .filter((match) => match !== null);
-
-      return aiMatches as {
-        user: User;
-        confidence: number;
-      }[];
-    } catch (error) {
-      this.logger.error(
-        `Error finding users with AI: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
-      );
-      return [];
-    }
-  }
-}
+//       return aiMatches as {
+//         user: User;
+//         confidence: number;
+//       }[];
+//     } catch (error) {
+//       this.logger.error(
+//         `Error finding users with AI: ${error instanceof Error ? error.message : JSON.stringify(error)}`,
+//       );
+//       return [];
+//     }
+//   }
+// }

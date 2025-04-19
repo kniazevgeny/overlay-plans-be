@@ -178,7 +178,7 @@ export class ProjectHandlers {
               creatorInfo = ` (${translate(language, 'createdBy')} ${slot.createdBy.firstName || slot.createdBy.username})`;
             }
 
-            message += `• ${lockIcon}${new Date(slot.startTime).toLocaleString()} - ${new Date(slot.endTime).toLocaleString()}${creatorInfo}\n`;
+            message += `• ${lockIcon}${new Date(slot.startTime).toLocaleDateString()} - ${new Date(slot.endTime).toLocaleDateString()}${creatorInfo}\n`;
           });
         }
       }

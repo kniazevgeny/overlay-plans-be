@@ -29,7 +29,15 @@ export interface TimeSlotData {
 export interface UserStateData {
   state: UserState;
   currentProjectId?: number;
-  pendingTimeSlots?: { [key: string]: TimeSlotData[] };
-  mentionedUsers?: { [key: string]: number | null }; // Maps message text to user IDs
+  selectedUserId?: number;
+  pendingTimeSlots?: Record<string, TimeSlotData[]>;
+  mentionedUsers?: Record<string, number | null>;
+  pendingStatusChanges?: Record<
+    string,
+    {
+      slots: any[];
+      projectId: number;
+    }
+  >;
   [key: string]: any; // For other dynamic properties
 }

@@ -83,6 +83,26 @@ interface TranslationKeys {
   busySlot: string;
   toggleToAvailable: string;
   toggleToBusy: string;
+
+  // Add new translation keys for user mention detection
+  detectedMention: string;
+
+  // New keys for displaying slots after automatic addition
+  slotsAddedDisplay: string;
+
+  // Confidence level warning
+  lowConfidenceWarning: string;
+
+  // Slot status change confirmation
+  confirmSlotStatusChange: string;
+  confirmYes: string;
+  confirmNo: string;
+  noStatusChangeToConfirm: string;
+  noTimeSlotsToUpdate: string;
+  noMatchingSlots: string;
+  errorUpdatingTimeSlots: string;
+  noStatusChangeToReject: string;
+  statusChangeRejected: string;
 }
 
 // Define translations for each language
@@ -127,19 +147,19 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
       "Would you like to register these as times when you're NOT available?",
 
     // Buttons and actions
-    approveAll: 'Approve All',
-    rejectAll: 'Reject All',
+    approveAll: 'Approve',
+    rejectAll: 'Reject',
     viewProject: 'View Project',
     backToProject: 'Back to Project',
-    slotsAddedSuccess: '✅ Added {0} time slot(s) to your schedule.',
+    slotsAddedSuccess: 'Successfully added {0} time slots to your schedule.',
     slotsRejected:
       'Time slots rejected. No changes were made to your schedule.',
 
     // New keys for slots locking and user assignment
     approveAndLock: 'Approve & Lock',
     slotsAddedAndLocked:
-      '🔒 Added {0} time slot(s) to your schedule and locked them.',
-    slotsAddedForUser: "✅ Added {0} time slot(s) to {1}'s schedule.",
+      '🔒 Successfully added and locked {0} time slots to your schedule.',
+    slotsAddedForUser: '✅ Successfully added {0} time slots for {1}.',
     creatingFor: 'Creating time slots for',
     lockTimeSlot: 'Lock Time Slot',
     unlockTimeSlot: 'Unlock Time Slot',
@@ -185,6 +205,29 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     busySlot: 'Busy Slot',
     toggleToAvailable: 'Toggle to Available',
     toggleToBusy: 'Toggle to Busy',
+
+    // Add new translation keys for user mention detection
+    detectedMention:
+      "I noticed you're referring to %s. Creating timeslots for them.",
+
+    // New keys for displaying slots after automatic addition
+    slotsAddedDisplay: 'Added slots',
+
+    // Confidence level warning
+    lowConfidenceWarning:
+      "I'm not entirely sure about these time slots. Please verify them before approving.",
+
+    // Slot status change confirmation
+    confirmSlotStatusChange:
+      'I think you want to change the status of some time slots. Is that correct?',
+    confirmYes: 'Yes, confirm',
+    confirmNo: 'No, cancel',
+    noStatusChangeToConfirm: 'No status change request to confirm.',
+    noTimeSlotsToUpdate: 'No time slots found to update.',
+    noMatchingSlots: 'No matching slots found for the specified dates.',
+    errorUpdatingTimeSlots: 'Error updating time slots. Please try again.',
+    noStatusChangeToReject: 'No status change request to reject.',
+    statusChangeRejected: 'Status change request rejected.',
   },
 
   fr: {
@@ -229,8 +272,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
       "Voulez-vous enregistrer ces périodes comme moments où vous n'êtes PAS disponible ?",
 
     // Buttons and actions
-    approveAll: 'Tout Approuver',
-    rejectAll: 'Tout Rejeter',
+    approveAll: 'Approuver',
+    rejectAll: 'Rejeter',
     viewProject: 'Voir le Projet',
     backToProject: 'Retour au Projet',
     slotsAddedSuccess:
@@ -291,6 +334,32 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     busySlot: 'Créneau Occupé',
     toggleToAvailable: 'Basculer en Disponible',
     toggleToBusy: 'Basculer en Occupé',
+
+    // Add new translation keys for user mention detection
+    detectedMention:
+      "I noticed you're referring to %s. Creating timeslots for them.",
+
+    // New keys for displaying slots after automatic addition
+    slotsAddedDisplay: 'Added slots',
+
+    // Confidence level warning
+    lowConfidenceWarning:
+      'Je ne suis pas tout à fait sûr de ces créneaux horaires. Veuillez les vérifier avant de les approuver.',
+
+    // Slot status change confirmation
+    confirmSlotStatusChange:
+      'Je pense que vous voulez changer le statut de certains créneaux horaires. Est-ce correct?',
+    confirmYes: 'Oui, confirmer',
+    confirmNo: 'Non, annuler',
+    noStatusChangeToConfirm:
+      'Aucune demande de changement de statut à confirmer.',
+    noTimeSlotsToUpdate: 'Aucun créneau horaire trouvé à mettre à jour.',
+    noMatchingSlots:
+      'Aucun créneau correspondant trouvé pour les dates spécifiées.',
+    errorUpdatingTimeSlots:
+      'Erreur lors de la mise à jour des créneaux horaires. Veuillez réessayer.',
+    noStatusChangeToReject: 'Aucune demande de changement de statut à rejeter.',
+    statusChangeRejected: 'Demande de changement de statut rejetée.',
   },
 
   ru: {
@@ -334,8 +403,8 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
       'Хотите зарегистрировать эти периоды как время, когда вы НЕ доступны?',
 
     // Buttons and actions
-    approveAll: 'Подтвердить Все',
-    rejectAll: 'Отклонить Все',
+    approveAll: 'Подтвердить',
+    rejectAll: 'Отклонить',
     viewProject: 'Просмотр Проекта',
     backToProject: 'Назад к Проекту',
     slotsAddedSuccess:
@@ -397,6 +466,31 @@ const translations: Record<SupportedLanguage, TranslationKeys> = {
     busySlot: 'Занятый Интервал',
     toggleToAvailable: 'Переключить в Доступный',
     toggleToBusy: 'Переключить в Занятый',
+
+    // Add new translation keys for user mention detection
+    detectedMention:
+      "I noticed you're referring to %s. Creating timeslots for them.",
+
+    // New keys for displaying slots after automatic addition
+    slotsAddedDisplay: 'Добавленные слоты',
+
+    // Confidence level warning
+    lowConfidenceWarning:
+      'Я не совсем уверен в этих временных интервалах. Пожалуйста, проверьте их перед утверждением.',
+
+    // Slot status change confirmation
+    confirmSlotStatusChange:
+      'Я думаю, вы хотите изменить статус некоторых временных интервалов. Это верно?',
+    confirmYes: 'Да, подтвердить',
+    confirmNo: 'Нет, отменить',
+    noStatusChangeToConfirm:
+      'Нет запроса на изменение статуса для подтверждения.',
+    noTimeSlotsToUpdate: 'Не найдено временных интервалов для обновления.',
+    noMatchingSlots: 'Не найдено соответствующих интервалов для указанных дат.',
+    errorUpdatingTimeSlots:
+      'Ошибка при обновлении временных интервалов. Пожалуйста, попробуйте еще раз.',
+    noStatusChangeToReject: 'Нет запроса на изменение статуса для отклонения.',
+    statusChangeRejected: 'Запрос на изменение статуса отклонен.',
   },
 };
 
