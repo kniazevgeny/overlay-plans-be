@@ -24,10 +24,13 @@
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
     "@nestjs/platform-express": "^11.0.1",
+    "@nestjs/platform-socket.io": "^11.0.20",
     "@nestjs/typeorm": "^11.0.0",
+    "@nestjs/websockets": "^11.0.20",
     "openai": "^4.95.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
+    "socket.io": "^4.8.1",
     "sqlite3": "^5.1.7",
     "telegraf": "^4.16.3",
     "typeorm": "^0.3.22"

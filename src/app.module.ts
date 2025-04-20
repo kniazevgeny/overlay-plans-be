@@ -9,6 +9,7 @@ import { Project } from './entities/project.entity';
 import { TimeSlot } from './entities/time-slot.entity';
 import { OpenAIService } from './openai.service';
 import { TimeslotToolService } from './timeslot-tool.service';
+import { TimeslotGateway } from './timeslot.gateway';
 
 @Module({
   imports: [
@@ -31,6 +32,12 @@ import { TimeslotToolService } from './timeslot-tool.service';
     TypeOrmModule.forFeature([User, Project, TimeSlot]),
   ],
   controllers: [AppController],
-  providers: [AppService, TelegramService, OpenAIService, TimeslotToolService],
+  providers: [
+    AppService,
+    TelegramService,
+    OpenAIService,
+    TimeslotToolService,
+    TimeslotGateway,
+  ],
 })
 export class AppModule {}

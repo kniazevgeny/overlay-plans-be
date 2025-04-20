@@ -1,0 +1,460 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Timeslot WebSocket Client</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+      body {
+        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        margin: 20px;
+        line-height: 1.6;
+      }
+      #app {
+        max-width: 1200px;
+        margin: 0 auto;
+      }
+      .container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 20px;
+      }
+      .panel {
+        flex: 1;
+        min-width: 300px;
+        border: 1px solid #ccc;
+        border-radius: 5px;
+        padding: 15px;
+        margin-bottom: 20px;
+      }
+      h2 {
+        margin-top: 0;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 10px;
+      }
+      button {
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        padding: 8px 16px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 14px;
+        margin: 4px 2px;
+        cursor: pointer;
+        border-radius: 4px;
+      }
+      input,
+      select {
+        padding: 8px;
+        margin: 5px 0;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+        width: 100%;
+      }
+      .form-group {
+        margin-bottom: 10px;
+      }
+      .status {
+        color: #31708f;
+        background-color: #d9edf7;
+        border: 1px solid #bce8f1;
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      .event-log {
+        background-color: #f5f5f5;
+        border: 1px solid #ddd;
+        padding: 10px;
+        border-radius: 4px;
+        height: 300px;
+        overflow-y: auto;
+        font-family: monospace;
+        margin-top: 10px;
+      }
+      pre {
+        margin: 0;
+        white-space: pre-wrap;
+      }
+      .status-connected {
+        color: green;
+      }
+      .status-disconnected {
+        color: red;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <h1>Timeslot WebSocket Client</h1>
+      <div class="status">
+        Connection Status:
+        <span id="connection-status" class="status-disconnected"
+          >Disconnected</span
+        >
+      </div>
+
+      <div class="container">
+        <div class="panel">
+          <h2>Connection</h2>
+          <div class="form-group">
+            <label for="server-url">Server URL:</label>
+            <input type="text" id="server-url" value="http://localhost:3000" />
+          </div>
+          <button id="connect-btn">Connect</button>
+          <button id="disconnect-btn" disabled>Disconnect</button>
+        </div>
+
+        <div class="panel">
+          <h2>User and Project Info</h2>
+          <div class="form-group">
+            <label for="user-id">User ID:</label>
+            <input type="number" id="user-id" value="1" />
+          </div>
+          <div class="form-group">
+            <label for="project-id">Project ID:</label>
+            <input type="number" id="project-id" value="1" />
+          </div>
+          <button id="get-timeslots-btn" disabled>Get User Timeslots</button>
+        </div>
+      </div>
+
+      <div class="container">
+        <div class="panel">
+          <h2>Add Timeslots</h2>
+          <div class="form-group">
+            <label for="add-start-time">Start Time:</label>
+            <input type="datetime-local" id="add-start-time" />
+          </div>
+          <div class="form-group">
+            <label for="add-end-time">End Time:</label>
+            <input type="datetime-local" id="add-end-time" />
+          </div>
+          <div class="form-group">
+            <label for="add-notes">Notes:</label>
+            <input type="text" id="add-notes" placeholder="Optional notes" />
+          </div>
+          <div class="form-group">
+            <label for="add-status">Status:</label>
+            <select id="add-status">
+              <option value="available">Available</option>
+              <option value="busy">Busy</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="add-label">Label:</label>
+            <input type="text" id="add-label" placeholder="Optional label" />
+          </div>
+          <div class="form-group">
+            <label for="add-color">Color:</label>
+            <input type="color" id="add-color" value="#4CAF50" />
+          </div>
+          <button id="add-timeslot-btn" disabled>Add Timeslot</button>
+        </div>
+
+        <div class="panel">
+          <h2>Update/Delete Timeslot</h2>
+          <div class="form-group">
+            <label for="timeslot-id">Timeslot ID:</label>
+            <input
+              type="number"
+              id="timeslot-id"
+              placeholder="ID of timeslot to modify"
+            />
+          </div>
+          <div class="form-group">
+            <label for="update-start-time">Start Time:</label>
+            <input type="datetime-local" id="update-start-time" />
+          </div>
+          <div class="form-group">
+            <label for="update-end-time">End Time:</label>
+            <input type="datetime-local" id="update-end-time" />
+          </div>
+          <div class="form-group">
+            <label for="update-notes">Notes:</label>
+            <input type="text" id="update-notes" placeholder="Optional notes" />
+          </div>
+          <div class="form-group">
+            <label for="update-status">Status:</label>
+            <select id="update-status">
+              <option value="available">Available</option>
+              <option value="busy">Busy</option>
+            </select>
+          </div>
+          <button id="update-timeslot-btn" disabled>Update Timeslot</button>
+          <button id="delete-timeslot-btn" disabled>Delete Timeslot</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>Event Log</h2>
+        <div class="event-log" id="event-log"></div>
+      </div>
+    </div>
+
+    <script>
+      document.addEventListener('DOMContentLoaded', function () {
+        // DOM elements
+        const connectBtn = document.getElementById('connect-btn');
+        const disconnectBtn = document.getElementById('disconnect-btn');
+        const serverUrlInput = document.getElementById('server-url');
+        const connectionStatus = document.getElementById('connection-status');
+        const eventLog = document.getElementById('event-log');
+
+        const userIdInput = document.getElementById('user-id');
+        const projectIdInput = document.getElementById('project-id');
+        const getTimeslotsBtn = document.getElementById('get-timeslots-btn');
+
+        const addStartTimeInput = document.getElementById('add-start-time');
+        const addEndTimeInput = document.getElementById('add-end-time');
+        const addNotesInput = document.getElementById('add-notes');
+        const addStatusSelect = document.getElementById('add-status');
+        const addLabelInput = document.getElementById('add-label');
+        const addColorInput = document.getElementById('add-color');
+        const addTimeslotBtn = document.getElementById('add-timeslot-btn');
+
+        const timeslotIdInput = document.getElementById('timeslot-id');
+        const updateStartTimeInput =
+          document.getElementById('update-start-time');
+        const updateEndTimeInput = document.getElementById('update-end-time');
+        const updateNotesInput = document.getElementById('update-notes');
+        const updateStatusSelect = document.getElementById('update-status');
+        const updateTimeslotBtn = document.getElementById(
+          'update-timeslot-btn',
+        );
+        const deleteTimeslotBtn = document.getElementById(
+          'delete-timeslot-btn',
+        );
+
+        // Set default date/time values
+        const now = new Date();
+        const endTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour later
+
+        addStartTimeInput.value = formatDateTimeForInput(now);
+        addEndTimeInput.value = formatDateTimeForInput(endTime);
+        updateStartTimeInput.value = formatDateTimeForInput(now);
+        updateEndTimeInput.value = formatDateTimeForInput(endTime);
+
+        // Socket.io instance
+        let socket = null;
+
+        // Helper functions
+        function formatDateTimeForInput(date) {
+          return date.toISOString().slice(0, 16);
+        }
+
+        function logEvent(message, data = null) {
+          const timestamp = new Date().toLocaleTimeString();
+          let logMessage = `[${timestamp}] ${message}`;
+
+          if (data) {
+            logMessage += '\n' + JSON.stringify(data, null, 2);
+          }
+
+          const logEntry = document.createElement('pre');
+          logEntry.textContent = logMessage + '\n';
+          eventLog.appendChild(logEntry);
+          eventLog.scrollTop = eventLog.scrollHeight;
+        }
+
+        function enableControls(connected) {
+          connectBtn.disabled = connected;
+          disconnectBtn.disabled = !connected;
+          getTimeslotsBtn.disabled = !connected;
+          addTimeslotBtn.disabled = !connected;
+          updateTimeslotBtn.disabled = !connected;
+          deleteTimeslotBtn.disabled = !connected;
+
+          connectionStatus.textContent = connected
+            ? 'Connected'
+            : 'Disconnected';
+          connectionStatus.className = connected
+            ? 'status-connected'
+            : 'status-disconnected';
+        }
+
+        // Event handlers
+        connectBtn.addEventListener('click', function () {
+          const serverUrl = serverUrlInput.value.trim();
+
+          if (!serverUrl) {
+            alert('Please enter a server URL');
+            return;
+          }
+
+          try {
+            socket = io(serverUrl);
+
+            socket.on('connect', function () {
+              logEvent('Connected to server');
+              enableControls(true);
+            });
+
+            socket.on('disconnect', function () {
+              logEvent('Disconnected from server');
+              enableControls(false);
+            });
+
+            socket.on('timeslots_updated', function (data) {
+              logEvent('Timeslots updated event received', data);
+            });
+
+            socket.on('connect_error', function (error) {
+              logEvent('Connection error', { message: error.message });
+            });
+          } catch (error) {
+            logEvent('Error connecting to server', { message: error.message });
+          }
+        });
+
+        disconnectBtn.addEventListener('click', function () {
+          if (socket) {
+            socket.disconnect();
+            socket = null;
+          }
+        });
+
+        getTimeslotsBtn.addEventListener('click', function () {
+          if (!socket) return;
+
+          const userId = parseInt(userIdInput.value);
+          const projectId = parseInt(projectIdInput.value);
+
+          if (isNaN(userId) || isNaN(projectId)) {
+            alert('Please enter valid User ID and Project ID');
+            return;
+          }
+
+          logEvent('Getting timeslots', { userId, projectId });
+
+          socket.emit(
+            'get_user_timeslots',
+            { userId, projectId },
+            function (response) {
+              logEvent('Get timeslots response', response);
+            },
+          );
+        });
+
+        addTimeslotBtn.addEventListener('click', function () {
+          if (!socket) return;
+
+          const userId = parseInt(userIdInput.value);
+          const projectId = parseInt(projectIdInput.value);
+
+          if (isNaN(userId) || isNaN(projectId)) {
+            alert('Please enter valid User ID and Project ID');
+            return;
+          }
+
+          const startTime = addStartTimeInput.value;
+          const endTime = addEndTimeInput.value;
+
+          if (!startTime || !endTime) {
+            alert('Please enter start and end times');
+            return;
+          }
+
+          const timeslotData = {
+            projectId,
+            userId,
+            timeslots: [
+              {
+                startTime: new Date(startTime).toISOString(),
+                endTime: new Date(endTime).toISOString(),
+                notes: addNotesInput.value,
+                status: addStatusSelect.value,
+                label: addLabelInput.value,
+                color: addColorInput.value,
+              },
+            ],
+          };
+
+          logEvent('Adding timeslot', timeslotData);
+
+          socket.emit(
+            'project_add_timeslots',
+            timeslotData,
+            function (response) {
+              logEvent('Add timeslot response', response);
+            },
+          );
+        });
+
+        updateTimeslotBtn.addEventListener('click', function () {
+          if (!socket) return;
+
+          const timeslotId = parseInt(timeslotIdInput.value);
+          const projectId = parseInt(projectIdInput.value);
+          const userId = parseInt(userIdInput.value);
+
+          if (isNaN(timeslotId) || isNaN(projectId) || isNaN(userId)) {
+            alert('Please enter valid Timeslot ID, Project ID, and User ID');
+            return;
+          }
+
+          const startTime = updateStartTimeInput.value;
+          const endTime = updateEndTimeInput.value;
+
+          const updateData = {
+            projectId,
+            requestUserId: userId,
+            timeslots: [
+              {
+                id: timeslotId,
+                startTime: startTime
+                  ? new Date(startTime).toISOString()
+                  : undefined,
+                endTime: endTime ? new Date(endTime).toISOString() : undefined,
+                notes: updateNotesInput.value || undefined,
+                status: updateStatusSelect.value,
+              },
+            ],
+          };
+
+          logEvent('Updating timeslot', updateData);
+
+          socket.emit(
+            'project_update_timeslots',
+            updateData,
+            function (response) {
+              logEvent('Update timeslot response', response);
+            },
+          );
+        });
+
+        deleteTimeslotBtn.addEventListener('click', function () {
+          if (!socket) return;
+
+          const timeslotId = parseInt(timeslotIdInput.value);
+          const projectId = parseInt(projectIdInput.value);
+          const userId = parseInt(userIdInput.value);
+
+          if (isNaN(timeslotId) || isNaN(projectId) || isNaN(userId)) {
+            alert('Please enter valid Timeslot ID, Project ID, and User ID');
+            return;
+          }
+
+          const deleteData = {
+            projectId,
+            timeslotIds: [timeslotId],
+            requestUserId: userId,
+          };
+
+          logEvent('Deleting timeslot', deleteData);
+
+          socket.emit(
+            'project_delete_timeslots',
+            deleteData,
+            function (response) {
+              logEvent('Delete timeslot response', response);
+            },
+          );
+        });
+      });
+    </script>
+  </body>
+</html>
