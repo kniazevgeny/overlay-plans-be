@@ -146,6 +146,14 @@ export class OpenAIService {
         - notes: Optional description of what the timeslot is for
         - status: Either "available" or "busy"
         - isLocked: When true, only the creator can modify the timeslot
+        - label: Optional descriptive label for the timeslot (e.g., "Holiday", "Team Meeting")
+        - color: Optional hex color code (e.g., "#FF5733") used for visual display
+        
+        ## Labels and Colors
+        - If the user doesn't explicitly provide a label, you should ALWAYS generate a meaningful, descriptive label based on the context
+        - Labels should be concise but informative (1-3 words is ideal)
+        - If the user doesn't specify a color, a default color will be automatically assigned based on the user ID
+        - You can suggest changes to both labels and colors if it makes sense in the context
         
         ## Project Users
         The following users are part of this project:
@@ -157,13 +165,19 @@ export class OpenAIService {
           .map((slot) => {
             const date = new Date(slot.startTime).toLocaleDateString();
             const endDate = new Date(slot.endTime).toLocaleDateString();
-            return `- ${date}${date !== endDate ? ` to ${endDate}` : ''} (${slot.status}) ${slot.notes ? `"${slot.notes}"` : ''}`;
+            const labelInfo = slot.label ? ` [${slot.label}]` : '';
+            return `- ${date}${date !== endDate ? ` to ${endDate}` : ''} (${slot.status})${labelInfo} ${slot.notes ? `"${slot.notes}"` : ''}`;
           })
           .join('\n')}
         
         ## Tools
         You can use tools to directly manipulate time slots. When a user makes a request to add, update, delete, or merge time slots, 
         use the appropriate tool rather than explaining how to do it.
+        
+        ## Language Adaptability
+        IMPORTANT: Always respond in the same language that the user used in their message. Even though these instructions are in English, 
+        you must detect the user's language and respond in that same language. This applies to all messages, including timeslot confirmations,
+        error messages, and casual conversation.
         
         ## IMPORTANT: Time Interpretation Rules
         - All timeslots operate on FULL DAYS only - no hourly slots are allowed

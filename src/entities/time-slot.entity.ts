@@ -1,6 +1,14 @@
-import { Entity, Column, PrimaryGeneratedColumn, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  Column,
+  PrimaryGeneratedColumn,
+  ManyToOne,
+  BeforeInsert,
+  BeforeUpdate,
+} from 'typeorm';
 import { User } from './user.entity';
 import { Project } from './project.entity';
+import { getColorForId } from '../constants/colors';
 
 @Entity()
 export class TimeSlot {
@@ -15,6 +23,12 @@ export class TimeSlot {
 
   @Column({ type: 'text', nullable: true })
   notes: string;
+
+  @Column({ type: 'varchar', length: 100, nullable: true })
+  label: string;
+
+  @Column({ type: 'varchar', length: 7, nullable: true })
+  color: string;
 
   @ManyToOne(() => User, (user) => user.timeSlots)
   user: User;
@@ -39,4 +53,16 @@ export class TimeSlot {
 
   @Column({ type: 'datetime', nullable: true })
   updatedAt: Date;
+
+  /**
+   * Before inserting or updating a time slot, if color is not set,
+   * assign a default color based on the user ID
+   */
+  @BeforeInsert()
+  @BeforeUpdate()
+  setDefaultColor() {
+    if (!this.color && this.user && this.user.id) {
+      this.color = getColorForId(this.user.id);
+    }
+  }
 }

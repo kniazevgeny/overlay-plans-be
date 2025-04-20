@@ -56,6 +56,8 @@ export class TimeslotToolService {
       notes?: string;
       status: 'available' | 'busy';
       isLocked?: boolean;
+      label?: string;
+      color?: string;
     }>;
     createdById?: number;
   }): Promise<{
@@ -112,6 +114,8 @@ export class TimeslotToolService {
             notes: slot.notes || '',
             status: slot.status,
             isLocked: slot.isLocked || false,
+            label: slot.label || '',
+            color: slot.color,
             project: project,
             user: user,
             participantFor: user,
@@ -150,6 +154,8 @@ export class TimeslotToolService {
       notes?: string;
       status?: 'available' | 'busy';
       isLocked?: boolean;
+      label?: string;
+      color?: string;
     }>;
     requestUserId: number;
   }): Promise<{
@@ -240,6 +246,14 @@ export class TimeslotToolService {
 
           if (update.isLocked !== undefined) {
             timeSlot.isLocked = update.isLocked;
+          }
+
+          if (update.label !== undefined) {
+            timeSlot.label = update.label;
+          }
+
+          if (update.color !== undefined) {
+            timeSlot.color = update.color;
           }
 
           timeSlot.updatedAt = new Date();

@@ -50,6 +50,16 @@ export const timeslotTools: ChatCompletionTool[] = [
                   description:
                     'Whether the timeslot should be locked (can only be modified by creator)',
                 },
+                label: {
+                  type: 'string',
+                  description:
+                    'Optional descriptive label for the timeslot. If not provided, generate a meaningful label based on available context.',
+                },
+                color: {
+                  type: 'string',
+                  description:
+                    'Optional color for the timeslot in hex format (e.g., #FF5733). If not provided, a color will be automatically assigned based on the user.',
+                },
               },
               required: ['startTime', 'endTime', 'status'],
             },
@@ -109,6 +119,16 @@ export const timeslotTools: ChatCompletionTool[] = [
                 isLocked: {
                   type: 'boolean',
                   description: 'Updated lock status',
+                },
+                label: {
+                  type: 'string',
+                  description:
+                    'Updated descriptive label for the timeslot. If not provided explicitly, generate a meaningful one based on context.',
+                },
+                color: {
+                  type: 'string',
+                  description:
+                    'Updated color for the timeslot in hex format (e.g., #FF5733)',
                 },
               },
               required: ['id'],

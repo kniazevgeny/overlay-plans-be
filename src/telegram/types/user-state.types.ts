@@ -21,6 +21,8 @@ export interface TimeSlotData {
   endTime: string;
   notes?: string;
   status?: 'available' | 'busy'; // Status of the time slot
+  label?: string; // Optional label for the time slot
+  color?: string; // Optional hex color code (e.g., '#FF5733')
 }
 
 /**
