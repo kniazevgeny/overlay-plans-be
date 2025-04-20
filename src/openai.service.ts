@@ -25,8 +25,13 @@ interface TimeslotToolResult {
 export class OpenAIService {
   private readonly logger = new Logger(OpenAIService.name);
   private readonly openai: OpenAI;
-  private conversationContexts: Map<string, ChatCompletionMessageParam[]> =
-    new Map();
+  private conversationContexts: Map<
+    string,
+    {
+      messages: ChatCompletionMessageParam[];
+      lastUpdated: Date;
+    }
+  > = new Map();
 
   constructor(
     private readonly configService: ConfigService,
@@ -393,29 +398,96 @@ export class OpenAIService {
   private getConversationContext(
     contextId: string,
   ): ChatCompletionMessageParam[] {
+    const now = new Date();
+
     if (!this.conversationContexts.has(contextId)) {
-      this.conversationContexts.set(contextId, []);
+      // Initialize empty context with current timestamp
+      this.conversationContexts.set(contextId, {
+        messages: [],
+        lastUpdated: now,
+      });
+      return [];
     }
-    return [...this.conversationContexts.get(contextId)];
+
+    const context = this.conversationContexts.get(contextId);
+
+    // Check if last interaction was more than 12 hours ago
+    const hoursSinceLastUpdate =
+      Math.abs(now.getTime() - context.lastUpdated.getTime()) /
+      (1000 * 60 * 60);
+
+    if (hoursSinceLastUpdate > 12) {
+      this.logger.log(
+        `Conversation context for ${contextId} is older than 12 hours (${hoursSinceLastUpdate.toFixed(2)} hours). Resetting.`,
+      );
+      // Reset the context but keep the timestamp updated
+      context.messages = [];
+      context.lastUpdated = now;
+      return [];
+    }
+
+    return [...context.messages];
   }
 
   /**
-   * Update conversation context, limiting history to last 10 messages
+   * Update conversation context, no longer limiting to just 10 messages
    */
   private updateConversationContext(
     contextId: string,
     messages: ChatCompletionMessageParam[],
   ): void {
-    // Keep only the last 10 messages to prevent context from growing too large
-    const limitedMessages = messages.slice(-10);
+    const now = new Date();
 
     // Make sure we don't break the tool calls pattern in the messages
-    const finalMessages = [...limitedMessages];
+    this.validateToolCallsPattern(messages);
 
-    // Check for valid tool calls pattern
-    this.validateToolCallsPattern(finalMessages);
+    // Update context with new messages and timestamp
+    this.conversationContexts.set(contextId, {
+      messages,
+      lastUpdated: now,
+    });
+  }
 
-    this.conversationContexts.set(contextId, finalMessages);
+  /**
+   * External method to update conversation history from outside components
+   * Can be called by frontend or other services to sync conversation state
+   */
+  public updateExternalConversationHistory(
+    contextId: string,
+    messages: ChatCompletionMessageParam[],
+  ): void {
+    this.logger.log(
+      `Updating conversation history for ${contextId} from external source`,
+    );
+    this.updateConversationContext(contextId, messages);
+  }
+
+  /**
+   * Add a message to the conversation history from an external source
+   * This is useful when changes are made via the frontend, so the bot
+   * knows about these changes in subsequent conversations
+   *
+   * @param contextId The conversation context ID
+   * @param content The message content describing what happened
+   * @param role The role of the message (default: 'system')
+   */
+  public addExternalMessage(
+    contextId: string,
+    content: string,
+    role: 'system' | 'assistant' | 'user' = 'system',
+  ): void {
+    this.logger.log(
+      `Adding external message to ${contextId} with role ${role}`,
+    );
+
+    // Get the current conversation context
+    const currentMessages = this.getConversationContext(contextId);
+
+    // Add the new message
+    const newMessages = [...currentMessages, { role, content }];
+
+    // Update the conversation context
+    this.updateConversationContext(contextId, newMessages);
   }
 
   /**
