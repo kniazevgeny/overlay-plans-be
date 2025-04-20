@@ -39,9 +39,6 @@ export class TimeSlot {
   @ManyToOne(() => User, { nullable: true })
   createdBy: User;
 
-  @ManyToOne(() => User, { nullable: true })
-  participantFor: User;
-
   @Column({ type: 'boolean', default: false })
   isLocked: boolean;
 

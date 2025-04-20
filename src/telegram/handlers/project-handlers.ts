@@ -116,12 +116,7 @@ export class ProjectHandlers {
 
     const project = await this.projectRepository.findOne({
       where: { id: projectId },
-      relations: [
-        'timeSlots',
-        'timeSlots.user',
-        'timeSlots.createdBy',
-        'timeSlots.participantFor',
-      ],
+      relations: ['timeSlots', 'timeSlots.user', 'timeSlots.createdBy'],
     });
 
     if (!project) {
@@ -142,7 +137,7 @@ export class ProjectHandlers {
       // Group the time slots by user for better organization
       const timeSlotsByUser = project.timeSlots.reduce(
         (acc, slot) => {
-          const userId = slot.participantFor?.id || slot.user?.id || 'unknown';
+          const userId = slot.user?.id || 'unknown';
           if (!acc[userId]) {
             acc[userId] = [];
           }
@@ -157,9 +152,7 @@ export class ProjectHandlers {
         const slots = timeSlotsByUser[userId];
         if (slots.length > 0) {
           const userName =
-            slots[0].participantFor?.firstName ||
             slots[0].user?.firstName ||
-            slots[0].participantFor?.username ||
             slots[0].user?.username ||
             translate(language, 'unknown');
 
@@ -172,8 +165,8 @@ export class ProjectHandlers {
             let creatorInfo = '';
             if (
               slot.createdBy &&
-              slot.participantFor &&
-              slot.createdBy.id !== slot.participantFor.id
+              slot.user &&
+              slot.createdBy.id !== slot.user.id
             ) {
               creatorInfo = ` (${translate(language, 'createdBy')} ${slot.createdBy.firstName || slot.createdBy.username})`;
             }

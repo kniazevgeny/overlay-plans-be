@@ -118,7 +118,6 @@ export class TimeslotToolService {
             color: slot.color,
             project: project,
             user: user,
-            participantFor: user,
             createdBy: creator,
             createdAt: new Date(),
           });

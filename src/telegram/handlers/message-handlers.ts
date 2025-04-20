@@ -52,7 +52,7 @@ export class MessageHandlers {
       userState.state !== UserState.IN_PROJECT ||
       !('currentProjectId' in userState && userState.currentProjectId)
     ) {
-      await ctx.reply(translate(language, 'selectProject'));
+      await this.projectHandlers.showProjectList(ctx);
       return;
     }
 
@@ -123,7 +123,7 @@ export class MessageHandlers {
       userState.state !== UserState.IN_PROJECT ||
       !userState.currentProjectId
     ) {
-      await ctx.reply(translate(language, 'selectProject'));
+      await this.projectHandlers.showProjectList(ctx);
       return;
     }
 
@@ -230,7 +230,7 @@ export class MessageHandlers {
       userState.state !== UserState.IN_PROJECT ||
       !('currentProjectId' in userState && userState.currentProjectId)
     ) {
-      await ctx.reply(translate(language, 'selectProject'));
+      await this.projectHandlers.showProjectList(ctx);
       return;
     }
 

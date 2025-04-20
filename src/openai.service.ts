@@ -151,7 +151,7 @@ export class OpenAIService {
         
         ## Labels and Colors
         - If the user doesn't explicitly provide a label, you should ALWAYS generate a meaningful, descriptive label based on the context
-        - Labels should be concise but informative (1-3 words is ideal)
+        - Labels should be concise but informative (1-5 words is ideal)
         - If the user doesn't specify a color, a default color will be automatically assigned based on the user ID
         - You can suggest changes to both labels and colors if it makes sense in the context
         
@@ -161,14 +161,40 @@ export class OpenAIService {
         
         ## Current User's Time Slots
         Here are the current time slots for the user in project "${project.name}":
-        ${timeSlots
-          .map((slot) => {
-            const date = new Date(slot.startTime).toLocaleDateString();
-            const endDate = new Date(slot.endTime).toLocaleDateString();
-            const labelInfo = slot.label ? ` [${slot.label}]` : '';
-            return `- ${date}${date !== endDate ? ` to ${endDate}` : ''} (${slot.status})${labelInfo} ${slot.notes ? `"${slot.notes}"` : ''}`;
-          })
-          .join('\n')}
+        ${(() => {
+          // Check if all timeslots are within the same year
+          const allSameYear =
+            timeSlots.length > 0 &&
+            timeSlots.every((slot) => {
+              const startYear = new Date(slot.startTime).getFullYear();
+              const endYear = new Date(slot.endTime).getFullYear();
+              return (
+                startYear === currentDate.getFullYear() &&
+                endYear === currentDate.getFullYear()
+              );
+            });
+
+          return timeSlots
+            .map((slot) => {
+              const startDate = new Date(slot.startTime);
+              const endDate = new Date(slot.endTime);
+
+              // Format dates based on whether they're all in the same year
+              const dateOptions: Intl.DateTimeFormatOptions = allSameYear
+                ? { month: 'numeric', day: 'numeric' }
+                : { year: 'numeric', month: 'numeric', day: 'numeric' };
+
+              const date = startDate.toLocaleDateString(undefined, dateOptions);
+              const endDateStr = endDate.toLocaleDateString(
+                undefined,
+                dateOptions,
+              );
+
+              const labelInfo = slot.label ? ` [${slot.label}]` : '';
+              return `- ${date}${date !== endDateStr ? ` to ${endDateStr}` : ''} (${slot.status})${labelInfo} ${slot.notes ? `"${slot.notes}"` : ''}`;
+            })
+            .join('\n');
+        })()}
         
         ## Tools
         You can use tools to directly manipulate time slots. When a user makes a request to add, update, delete, or merge time slots, 
@@ -186,6 +212,17 @@ export class OpenAIService {
         - For example, if user mentions "1 to 9 May", create ONE slot spanning all 9 days, not 9 individual slots
         - When multiple consecutive days have the same status, ALWAYS consolidate them into a single slot
         - Default to the current or upcoming dates if no specific date is mentioned
+        
+        ## IMPORTANT: Status Determination Rules
+        - The general goal is to understand when people (friends, family, etc.) are available to meet
+        - Mark as "available" when:
+          - Vacations, holidays, and personal time off (these indicate the person is not at work but could potentially be available for this project)
+          - Any event that is consistent with the rest of the vacation plans
+        - Mark as "busy" when:
+          - Work commitments, meetings, deadlines
+          - Someone's birthday or other personal events requiring their attention
+          - Any event that would prevent participation in project activities
+        - Always analyze the context of the request to determine the appropriate status
         
         ## OFF-TOPIC RESPONSE
         The user has sent a message that is not related to scheduling or planning.
