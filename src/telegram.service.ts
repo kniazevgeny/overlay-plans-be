@@ -85,6 +85,41 @@ export class TelegramService implements OnApplicationBootstrap {
     }
   }
 
+  /**
+   * Get the user's profile photo URL
+   */
+  private async getUserProfilePhotoUrl(userId: number): Promise<string | null> {
+    try {
+      // Get user profile photos
+      const userPhotos = await this.bot.telegram.getUserProfilePhotos(
+        userId,
+        0,
+        1,
+      );
+
+      if (
+        userPhotos &&
+        userPhotos.photos &&
+        userPhotos.photos.length > 0 &&
+        userPhotos.photos[0].length > 0
+      ) {
+        const fileId = userPhotos.photos[0][0].file_id;
+
+        // Get file path
+        const file = await this.bot.telegram.getFile(fileId);
+        if (file && file.file_path) {
+          // Construct full URL
+          const baseUrl = `https://api.telegram.org/file/bot${this.configService.get<string>('TG_TOKEN')}`;
+          return `${baseUrl}/${file.file_path}`;
+        }
+      }
+      return null;
+    } catch (error) {
+      this.logger.error(`Error getting user profile photo: ${error}`);
+      return null;
+    }
+  }
+
   async onApplicationBootstrap(): Promise<void> {
     const token = this.configService.get<string>('TG_TOKEN');
     if (!token) {
@@ -205,14 +240,29 @@ export class TelegramService implements OnApplicationBootstrap {
     });
     const isFirstTime = !user;
 
+    // Try to get avatar URL
+    const avatarUrl = await this.getUserProfilePhotoUrl(tgUser.id);
+
     if (!user) {
       user = this.userRepository.create({
         telegramId: tgUser.id,
         firstName: tgUser.first_name,
         lastName: tgUser.last_name,
         username: tgUser.username,
+        avatarUrl: avatarUrl || null,
       });
       await this.userRepository.save(user);
+    } else {
+      // Update user data including avatar
+      user.firstName = tgUser.first_name || user.firstName;
+      user.lastName = tgUser.last_name || user.lastName;
+      user.username = tgUser.username || user.username;
+
+      // Only update avatar if we successfully retrieved it
+      if (avatarUrl) {
+        user.avatarUrl = avatarUrl;
+        await this.userRepository.save(user);
+      }
     }
 
     // Set initial state

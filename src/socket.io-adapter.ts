@@ -33,6 +33,6 @@ export class SocketIoAdapter extends IoAdapter {
     });
 
     console.log('Socket.IO server created successfully');
-    return server;
+    return server as Server;
   }
 }

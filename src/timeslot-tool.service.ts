@@ -20,6 +20,64 @@ export class TimeslotToolService {
   ) {}
 
   /**
+   * Find a user by their Telegram ID
+   */
+  async findUserByTelegramId(telegramId: number): Promise<User | null> {
+    try {
+      const user = await this.userRepository.findOne({
+        where: { telegramId: telegramId },
+      });
+
+      return user || null;
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(`Error finding user by Telegram ID: ${errorMessage}`);
+      return null;
+    }
+  }
+
+  /**
+   * Get time slots for a user by their Telegram ID in a project
+   */
+  async getUserTimeSlotsByTelegramId(
+    telegramId: number,
+    projectId: number,
+  ): Promise<{
+    success: boolean;
+    timeSlots?: TimeSlot[];
+    error?: string;
+  }> {
+    try {
+      const user = await this.findUserByTelegramId(telegramId);
+
+      if (!user) {
+        return {
+          success: false,
+          error: `User with Telegram ID ${telegramId} not found`,
+        };
+      }
+
+      const timeSlots = await this.getUserTimeSlots(user.id, projectId);
+
+      return {
+        success: true,
+        timeSlots,
+      };
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Error getting user time slots by Telegram ID: ${errorMessage}`,
+      );
+      return {
+        success: false,
+        error: `Error getting user time slots: ${errorMessage}`,
+      };
+    }
+  }
+
+  /**
    * Get time slots for a specific user in a project
    */
   async getUserTimeSlots(
@@ -32,6 +90,7 @@ export class TimeslotToolService {
           user: { id: userId },
           project: { id: projectId },
         },
+        relations: ['user'],
         order: { startTime: 'ASC' },
       });
 

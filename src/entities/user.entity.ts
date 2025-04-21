@@ -18,6 +18,9 @@ export class User {
   telegramId: number;
 
   @Column({ nullable: true })
+  avatarUrl: string;
+
+  @Column({ nullable: true })
   firstName: string;
 
   @Column({ nullable: true })

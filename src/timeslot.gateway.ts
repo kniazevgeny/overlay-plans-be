@@ -100,12 +100,41 @@ export class TimeslotGateway
         label?: string;
         color?: string;
       }>;
-      requestUserId: number;
+      requestUserTelegramId?: number;
+      requestUserId?: number;
     },
   ) {
     this.logger.log(`Updating timeslots for project ${data.projectId}`);
     try {
-      const result = await this.timeslotToolService.updateTimeslots(data);
+      let requestUserId = data.requestUserId;
+
+      // If requestUserId is not provided but requestUserTelegramId is, convert it
+      if (!requestUserId && data.requestUserTelegramId) {
+        const user = await this.timeslotToolService.findUserByTelegramId(
+          data.requestUserTelegramId,
+        );
+        if (!user) {
+          return {
+            success: false,
+            error: `User with Telegram ID ${data.requestUserTelegramId} not found`,
+          };
+        }
+        requestUserId = user.id;
+      }
+
+      if (!requestUserId) {
+        return {
+          success: false,
+          error:
+            'Either requestUserId or requestUserTelegramId must be provided',
+        };
+      }
+
+      const result = await this.timeslotToolService.updateTimeslots({
+        projectId: data.projectId,
+        timeslots: data.timeslots,
+        requestUserId: requestUserId,
+      });
 
       if (result.success) {
         // Broadcast to all connected clients that timeslots were updated
@@ -133,12 +162,41 @@ export class TimeslotGateway
     data: {
       projectId: number;
       timeslotIds: number[];
-      requestUserId: number;
+      requestUserTelegramId?: number;
+      requestUserId?: number;
     },
   ) {
     this.logger.log(`Deleting timeslots for project ${data.projectId}`);
     try {
-      const result = await this.timeslotToolService.deleteTimeslots(data);
+      let requestUserId = data.requestUserId;
+
+      // If requestUserId is not provided but requestUserTelegramId is, convert it
+      if (!requestUserId && data.requestUserTelegramId) {
+        const user = await this.timeslotToolService.findUserByTelegramId(
+          data.requestUserTelegramId,
+        );
+        if (!user) {
+          return {
+            success: false,
+            error: `User with Telegram ID ${data.requestUserTelegramId} not found`,
+          };
+        }
+        requestUserId = user.id;
+      }
+
+      if (!requestUserId) {
+        return {
+          success: false,
+          error:
+            'Either requestUserId or requestUserTelegramId must be provided',
+        };
+      }
+
+      const result = await this.timeslotToolService.deleteTimeslots({
+        projectId: data.projectId,
+        timeslotIds: data.timeslotIds,
+        requestUserId: requestUserId,
+      });
 
       if (result.success) {
         // Broadcast to all connected clients that timeslots were deleted
@@ -166,13 +224,43 @@ export class TimeslotGateway
     data: {
       projectId: number;
       timeslotIds: number[];
-      requestUserId: number;
+      requestUserTelegramId?: number;
+      requestUserId?: number;
       mergedNotes?: string;
     },
   ) {
     this.logger.log(`Merging timeslots for project ${data.projectId}`);
     try {
-      const result = await this.timeslotToolService.mergeTimeslots(data);
+      let requestUserId = data.requestUserId;
+
+      // If requestUserId is not provided but requestUserTelegramId is, convert it
+      if (!requestUserId && data.requestUserTelegramId) {
+        const user = await this.timeslotToolService.findUserByTelegramId(
+          data.requestUserTelegramId,
+        );
+        if (!user) {
+          return {
+            success: false,
+            error: `User with Telegram ID ${data.requestUserTelegramId} not found`,
+          };
+        }
+        requestUserId = user.id;
+      }
+
+      if (!requestUserId) {
+        return {
+          success: false,
+          error:
+            'Either requestUserId or requestUserTelegramId must be provided',
+        };
+      }
+
+      const result = await this.timeslotToolService.mergeTimeslots({
+        projectId: data.projectId,
+        timeslotIds: data.timeslotIds,
+        requestUserId: requestUserId,
+        mergedNotes: data.mergedNotes,
+      });
 
       if (result.success) {
         // Broadcast to all connected clients that timeslots were merged
@@ -220,6 +308,40 @@ export class TimeslotGateway
       const errorMessage =
         error instanceof Error ? error.message : 'Unknown error';
       this.logger.error(`Error getting timeslots: ${errorMessage}`);
+      return {
+        success: false,
+        error: `Error getting timeslots: ${errorMessage}`,
+      };
+    }
+  }
+
+  // Get timeslots for a user by Telegram ID
+  @SubscribeMessage('get_user_timeslots_by_telegram')
+  async handleGetUserTimeslotsByTelegram(
+    @ConnectedSocket() client: Socket,
+    @MessageBody()
+    data: {
+      projectId: number;
+      telegramId: number;
+    },
+  ) {
+    this.logger.log(
+      `Getting timeslots for telegram user ${data.telegramId} in project ${data.projectId}`,
+    );
+    try {
+      const result =
+        await this.timeslotToolService.getUserTimeSlotsByTelegramId(
+          data.telegramId,
+          data.projectId,
+        );
+
+      return result;
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+      this.logger.error(
+        `Error getting timeslots by Telegram ID: ${errorMessage}`,
+      );
       return {
         success: false,
         error: `Error getting timeslots: ${errorMessage}`,
