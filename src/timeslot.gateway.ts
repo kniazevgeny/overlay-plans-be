@@ -15,9 +15,9 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { TimeslotToolService } from './timeslot-tool.service';
 
-@WebSocketGateway(3000, {
+@WebSocketGateway({
   transports: ['websocket', 'polling'],
-  namespace: '/',
+  namespace: '/socket',
 })
 export class TimeslotGateway
   implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect

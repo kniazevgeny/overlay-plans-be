@@ -11,12 +11,8 @@ export class SocketIoAdapter extends IoAdapter {
   }
 
   createIOServer(port: number, options?: ServerOptions): Server {
-    // If port is 0, use the same port as the HTTP server
-    if (port === 0) {
-      port = parseInt(process.env.PORT ?? '3000', 10);
-    }
-
-    console.log(`Creating Socket.IO server on port ${port}`);
+    // Always use the HTTP server's port
+    console.log(`Creating Socket.IO server attached to HTTP server`);
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const server = super.createIOServer(port, {
