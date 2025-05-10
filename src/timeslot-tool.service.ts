@@ -311,7 +311,7 @@ export class TimeslotToolService {
           }
 
           if (update.color !== undefined) {
-            timeSlot.color = update.color;
+            timeSlot.color = update.color === 'null' ? null : update.color;
           }
 
           timeSlot.updatedAt = new Date();

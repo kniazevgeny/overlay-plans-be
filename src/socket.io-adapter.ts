@@ -12,7 +12,9 @@ export class SocketIoAdapter extends IoAdapter {
 
   createIOServer(port: number, options?: ServerOptions): Server {
     // Always use the HTTP server's port
-    console.log(`Creating Socket.IO server attached to HTTP server`);
+    console.log(
+      `Creating Socket.IO server attached to HTTP server, port: ${port}`,
+    );
 
     // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
     const server = super.createIOServer(port, {

@@ -152,7 +152,6 @@ export class OpenAIService {
         - status: Either "available" or "busy"
         - isLocked: When true, only the creator can modify the timeslot
         - label: Optional descriptive label for the timeslot (e.g., "Holiday", "Team Meeting")
-        - color: Optional hex color code (e.g., "#FF5733") used for visual display
         
         ## Labels and Colors
         - If the user doesn't explicitly provide a label, you should ALWAYS generate a meaningful, descriptive label based on the context

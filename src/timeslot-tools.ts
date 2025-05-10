@@ -55,11 +55,6 @@ export const timeslotTools: ChatCompletionTool[] = [
                   description:
                     'Optional descriptive label for the timeslot. If not provided, generate a meaningful label based on available context.',
                 },
-                color: {
-                  type: 'string',
-                  description:
-                    'Optional color for the timeslot in hex format (e.g., #FF5733). If not provided, a color will be automatically assigned based on the user.',
-                },
               },
               required: ['startTime', 'endTime', 'status'],
             },
@@ -128,7 +123,7 @@ export const timeslotTools: ChatCompletionTool[] = [
                 color: {
                   type: 'string',
                   description:
-                    'Updated color for the timeslot in hex format (e.g., #FF5733)',
+                    'Updated color for the timeslot in hex format (e.g., #FF5733). If the color needs to be removed, set it to "null".',
                 },
               },
               required: ['id'],
